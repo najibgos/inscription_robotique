@@ -4,14 +4,17 @@
 المديرية الإقليمية نواصر — الثانوية التأهيلية علال بن عبد الله
 =================================================================
 Application Streamlit : formulaire d'inscription en arabe (RTL)
-- Champs : nom, prénom, classe (القسم), groupe/fouj (الفوج) et الموعد
-  (menu unique jour + créneau d'une heure, avec places restantes en temps réel)
-- Classes disponibles : TCLSH-1 + TCSF-1 → TCSF-9 (codes Massar)
+- Champs : nom, prénom, classe (القسم), groupe/fouj (الفوج) et الموعد الأسبوعي
+  (menu unique : paire de 2 jours différents + créneau d'une heure, avec
+  places restantes en temps réel)
+- Classes disponibles : TCLSH-1 + TCSF-1 → TCSF-10 (codes Massar)
 - Horaires : ateliers à partir du lundi 26 octobre 2026, du lundi au jeudi
   entre 14h00 et 18h00 (séances d'une heure : 14:00-15:00, 15:00-16:00,
   16:00-17:00, 17:00-18:00)
 - 4 groupes (فوج) — 20 élèves maximum par groupe
-- Créneaux (موعد = jour + horaire) — 20 élèves maximum par créneau
+- 2 séances par semaine par élève : 2 jours différents + même horaire,
+  dans le même فوج — chaque inscription occupe 1 place dans chacune
+  des 2 séances (حصة = jour + horaire, 20 élèves maximum par حصة)
 - Insistance sur la limite des places (bandeau d'alerte, statistiques, cartes)
 - Sauvegarde automatique des inscriptions dans inscriptions.json
 - Export Excel : sauvegarde locale inscriptions.xlsx après chaque inscription
@@ -53,7 +56,7 @@ st.set_page_config(
 )
 
 MAX_PER_GROUP = 20  # limite stricte : 20 élèves au maximum par groupe
-MAX_PER_SLOT = 20   # limite stricte : 20 élèves au maximum par موعد (jour + créneau)
+MAX_PER_SLOT = 20   # limite stricte : 20 élèves au maximum par حصة (jour + créneau)
 
 # Code d'accès à l'espace d'administration (export Excel) — à personnaliser !
 ADMIN_CODE = "robot2026"
@@ -72,6 +75,7 @@ CLASSES = [
     "TCSF-7",
     "TCSF-8",
     "TCSF-9",
+    "TCSF-10",
 ]
 
 # Jours et créneaux des ateliers — à partir du lundi 26 octobre 2026,
@@ -82,6 +86,17 @@ TIME_SLOTS = [
     "15:00 – 16:00",
     "16:00 – 17:00",
     "17:00 – 18:00",
+]
+
+# Paires de jours possibles pour les 2 séances hebdomadaires (2 jours différents,
+# même horaire) — 6 combinaisons
+DAY_PAIRS = [
+    ("الاثنين", "الثلاثاء"),
+    ("الاثنين", "الأربعاء"),
+    ("الاثنين", "الخميس"),
+    ("الثلاثاء", "الأربعاء"),
+    ("الثلاثاء", "الخميس"),
+    ("الأربعاء", "الخميس"),
 ]
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inscriptions.json")
@@ -118,13 +133,21 @@ def group_counts(rows):
 
 
 def slot_counts(rows):
-    """Retourne le nombre d'inscrits par موعد (jour + créneau)."""
+    """Nombre d'inscrits par حصة (jour + créneau).
+
+    Chaque inscription couvre 2 séances hebdomadaires (jour1 + jour2, même
+    horaire) : elle compte donc pour chacune des 2 حصص.
+    Compatibilité : les anciens enregistrements (champ jour) comptent pour 1.
+    """
     counts = {}
     for row in rows:
-        j = row.get("jour", "")
         h = row.get("horaire", "")
-        if j in DAYS and h in TIME_SLOTS:
-            counts[(j, h)] = counts.get((j, h), 0) + 1
+        jours = [j for j in (row.get("jour1"), row.get("jour2")) if j]
+        if not jours and row.get("jour"):
+            jours = [row.get("jour")]
+        for j in jours:
+            if j in DAYS and h in TIME_SLOTS:
+                counts[(j, h)] = counts.get((j, h), 0) + 1
     return counts
 
 
@@ -154,11 +177,24 @@ total_capacity = MAX_PER_GROUP * len(GROUPS)
 remaining_total = total_capacity - sum(counts.values())
 full_groups = sum(1 for g in GROUPS if counts[g] >= MAX_PER_GROUP)
 
-# État des créneaux (موعد = jour + créneau) avec limite MAX_PER_SLOT
+# État des séances (حصة = jour + créneau) avec limite MAX_PER_SLOT
 slot_counts_map = slot_counts(data)
 all_slots = [(j, h) for j in DAYS for h in TIME_SLOTS]
 available_slots = [s for s in all_slots if slot_counts_map.get(s, 0) < MAX_PER_SLOT]
 full_slots = len(all_slots) - len(available_slots)
+
+# Combinaisons hebdomadaires disponibles (6 paires de jours × 4 horaires).
+# Une inscription couvre 2 séances : la paire n'est proposée que si LES DEUX
+# séances (jour1 + jour2 au même horaire) ont encore des places.
+available_week = []
+for d1, d2 in DAY_PAIRS:
+    for h in TIME_SLOTS:
+        rem = min(
+            MAX_PER_SLOT - slot_counts_map.get((d1, h), 0),
+            MAX_PER_SLOT - slot_counts_map.get((d2, h), 0),
+        )
+        if rem > 0:
+            available_week.append((d1, d2, h))
 
 # ============================================================
 # 3) MISE EN PAGE : arabe RTL + police arabe + styles
@@ -307,7 +343,7 @@ st.markdown(
         </div>
         <div class="stat-box">
             <div class="stat-num" style="color:{'#c62828' if full_slots > 0 else '#0f4c5c'};">{full_slots}</div>
-            <div class="stat-label">مواعيد مكتملة (من {len(all_slots)})</div>
+            <div class="stat-label">حصص مكتملة (من {len(all_slots)})</div>
         </div>
     </div>
     """,
@@ -358,7 +394,7 @@ if not available_groups:
         "🔒 **انتهت جميع المقاعد!** تم اكتمال كل الأفواج (4 أفواج × 20 تلميذا)، "
         "وعليه تم **إغلاق باب التسجيل**. نشكر لكم اهتمامكم الكبير."
     )
-elif not available_slots:
+elif not available_week:
     st.error(
         "🔒 **جميع المواعيد مكتملة!** وصل العدد إلى الحد الأقصى في كل الأيام والتوقيتات "
         "المعروضة. المرجو الاتصال بإدارة الثانوية لمعرفة ما إذا كانت ستُفتح مواعيد جديدة."
@@ -393,26 +429,37 @@ else:
             unsafe_allow_html=True,
         )
 
-        # --- الموعد (jour + créneau d'une heure) : menu unique avec places restantes ---
-        slot_labels = []
-        slot_map = []
-        for j, h in available_slots:
-            rem = MAX_PER_SLOT - slot_counts_map.get((j, h), 0)
+        # --- الموعد الأسبوعي : 2 jours différents + même horaire, menu unique ---
+        week_labels = []
+        week_map = []
+        for d1, d2, h in available_week:
+            rem = min(
+                MAX_PER_SLOT - slot_counts_map.get((d1, h), 0),
+                MAX_PER_SLOT - slot_counts_map.get((d2, h), 0),
+            )
             # \u2066/\u2069 : isolats LTR pour afficher la plage horaire dans le bon ordre (bidi)
-            slot_labels.append(f"يوم {j} — \u2066{h}\u2069 — المقاعد المتبقية: {rem}")
-            slot_map.append((j, h))
-        slot_choice = st.selectbox(
-            "الموعد *",
-            slot_labels,
+            week_labels.append(f"يوم {d1} + يوم {d2} — \u2066{h}\u2069 — المقاعد المتبقية: {rem}")
+            week_map.append((d1, d2, h))
+        week_choice = st.selectbox(
+            "الموعد الأسبوعي (حصتان) *",
+            week_labels,
             index=None,
-            placeholder="اختر اليوم والتوقيت المناسبين...",
+            placeholder="اختر يومين مختلفين ونفس التوقيت...",
+        )
+        st.markdown(
+            '<p style="font-size:0.82rem; color:#78909c;">'
+            "تُقام <b>حصتان في الأسبوع</b> يومين مختلفين في <b>نفس التوقيت</b> "
+            "(مثال: الاثنين والأربعاء من 14:00 إلى 15:00) — المقاعد المتبقية محسوبة على أساس الحصتين معا."
+            "</p>",
+            unsafe_allow_html=True,
         )
 
         st.markdown(
             '<p style="font-size:0.85rem; color:#78909c;">'
             "🕐 تبدأ الورشات ابتداء من <b>الاثنين 26 أكتوبر 2026</b> — من الاثنين إلى الخميس، "
             "بين الساعة <b>14:00</b> و<b>18:00</b>، ومدة كل حصة <b>ساعة واحدة</b>. "
-            "المرجو اختيار الموعد المناسب لك — <b>عدد المقاعد محدود في كل موعد</b>."
+            "يحضر كل تلميذ <b>حصتين في الأسبوع</b> يومين مختلفين في <b>نفس التوقيت</b> "
+            "وبنفس الفوج — <b>عدد المقاعد محدود في كل حصة</b>."
             "</p>",
             unsafe_allow_html=True,
         )
@@ -437,7 +484,7 @@ else:
         nom_clean = normalize(nom)
         prenom_clean = normalize(prenom)
         classe_clean = normalize(classe or "")
-        jour_clean, horaire_clean = "", ""
+        jour1_clean, jour2_clean, horaire_clean = "", "", ""
 
         if len(nom_clean) < 2:
             errors.append("المرجو إدخال الاسم العائلي (حرفان على الأقل).")
@@ -446,14 +493,19 @@ else:
         if classe_clean not in CLASSES:
             errors.append("المرجو اختيار القسم (TCLSH-1 أو TCSF).")
 
-        # الموعد : jour + créneau sélectionnés via le menu unique
-        if slot_choice is None or slot_choice not in slot_labels:
-            errors.append("المرجو اختيار الموعد (اليوم والتوقيت المناسبين).")
+        # الموعد الأسبوعي : paire de jours + créneau sélectionnés via le menu unique
+        if week_choice is None or week_choice not in week_labels:
+            errors.append("المرجو اختيار الموعد الأسبوعي (اليومين والتوقيت المناسبين).")
         else:
-            jour_clean, horaire_clean = slot_map[slot_labels.index(slot_choice)]
-            if jour_clean not in DAYS or horaire_clean not in TIME_SLOTS:
-                errors.append("المرجو اختيار الموعد (اليوم والتوقيت المناسبين).")
-                jour_clean, horaire_clean = "", ""
+            jour1_clean, jour2_clean, horaire_clean = week_map[week_labels.index(week_choice)]
+            if (
+                jour1_clean not in DAYS
+                or jour2_clean not in DAYS
+                or horaire_clean not in TIME_SLOTS
+                or jour1_clean == jour2_clean
+            ):
+                errors.append("المرجو اختيار الموعد الأسبوعي (اليومين والتوقيت المناسبين).")
+                jour1_clean, jour2_clean, horaire_clean = "", "", ""
 
         # Recharger les données pour réduire les risques de concurrence
         rows_now = load_inscriptions()
@@ -463,14 +515,15 @@ else:
         if groupe not in GROUPS or counts_now.get(groupe, 0) >= MAX_PER_GROUP:
             errors.append("عذرا، أصبح هذا الفوج مكتملا للتو. المرجو تحديث الصفحة واختيار فوج آخر.")
 
-        # Limite par créneau (revérifiée au moment de la soumission)
-        if (jour_clean, horaire_clean) in all_slots and slots_now.get(
-            (jour_clean, horaire_clean), 0
-        ) >= MAX_PER_SLOT:
-            errors.append(
-                f"عذرا، أصبح هذا الموعد مكتملا للتو (حد أقصى {MAX_PER_SLOT} تلاميذا في كل موعد). "
-                "المرجو تحديث الصفحة واختيار موعد آخر."
-            )
+        # Limite par حصة (revérifiée à la soumission pour les DEUX séances)
+        if horaire_clean in TIME_SLOTS:
+            rem1 = MAX_PER_SLOT - slots_now.get((jour1_clean, horaire_clean), 0)
+            rem2 = MAX_PER_SLOT - slots_now.get((jour2_clean, horaire_clean), 0)
+            if rem1 <= 0 or rem2 <= 0:
+                errors.append(
+                    f"عذرا، أصبحت إحدى الحصتين مكتملة للتو (حد أقصى {MAX_PER_SLOT} تلاميذا في كل حصة). "
+                    "المرجو تحديث الصفحة واختيار الموعد من جديد."
+                )
 
         # Détection des doublons (même nom + prénom)
         full_name = f"{nom_clean} {prenom_clean}"
@@ -493,7 +546,8 @@ else:
                     "prenom": prenom_clean,
                     "classe": classe_clean,
                     "groupe": groupe,
-                    "jour": jour_clean,
+                    "jour1": jour1_clean,
+                    "jour2": jour2_clean,
                     "horaire": horaire_clean,
                     "date_inscription": now_str(),
                 }
@@ -503,21 +557,26 @@ else:
             # Sauvegarde Excel locale automatique (silencieuse si FS en lecture seule)
             if EXCEL_OK:
                 try:
-                    save_excel_file(rows_now, os.path.join(BASE_DIR, "inscriptions.xlsx"),
-                                    max_per_group=MAX_PER_GROUP)
+                    save_excel_file(
+                        rows_now,
+                        os.path.join(BASE_DIR, "inscriptions.xlsx"),
+                        max_per_group=MAX_PER_GROUP,
+                        max_per_slot=MAX_PER_SLOT,
+                    )
                 except Exception:
                     pass
 
             left_after_group = MAX_PER_GROUP - counts_now[groupe] - 1
-            left_after_slot = MAX_PER_SLOT - slots_now.get((jour_clean, horaire_clean), 0) - 1
+            left1 = MAX_PER_SLOT - slots_now.get((jour1_clean, horaire_clean), 0) - 1
+            left2 = MAX_PER_SLOT - slots_now.get((jour2_clean, horaire_clean), 0) - 1
 
             st.balloons()
             st.success(
                 f"🎉 تم تسجيل **{prenom_clean} {nom_clean}** — القسم **{classe_clean}** — في **{groupe}**!\n\n"
-                f"🕒 الموعد المختار: يوم **{jour_clean}**، التوقيت **\u2066{horaire_clean}\u2069** "
-                "(انطلاقا من الاثنين 26 أكتوبر 2026)\n\n"
+                f"🕒 حصتا الأسبوع: يوم **{jour1_clean}** ويوم **{jour2_clean}**، "
+                f"التوقيت **\u2066{horaire_clean}\u2069** (انطلاقا من الاثنين 26 أكتوبر 2026)\n\n"
                 f"عدد المقاعد المتبقية في هذا الفوج: **{left_after_group}** — "
-                f"وفي هذا الموعد: **{left_after_slot}**\n\n"
+                f"في حصة يوم {jour1_clean}: **{left1}** — وفي حصة يوم {jour2_clean}: **{left2}**\n\n"
                 "ملاحظة: يعتبر التسجيل مؤقتا إلى حين تأكيده من طرف إدارة الثانوية."
             )
 
@@ -545,7 +604,8 @@ with st.expander("فتح فضاء الإدارة — قائمة التسجيلا
                                     "الاسم الشخصي": r.get("prenom", ""),
                                     "القسم": r.get("classe", ""),
                                     "الفوج": r.get("groupe", ""),
-                                    "اليوم": r.get("jour", ""),
+                                    "اليوم الأول": r.get("jour1", r.get("jour", "")),
+                                    "اليوم الثاني": r.get("jour2", ""),
                                     "التوقيت": r.get("horaire", ""),
                                     "تاريخ التسجيل": r.get("date_inscription", ""),
                                 }
@@ -565,7 +625,7 @@ with st.expander("فتح فضاء الإدارة — قائمة التسجيلا
                         width="stretch",
                     )
                     st.caption(
-                        "يحتوي الملف على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم والموعد. "
+                        "يحتوي الملف على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم والحصة وأيام الحصتين. "
                         "كما يُحفظ نسخة محلية تلقائية (inscriptions.xlsx) بعد كل عملية تسجيل عند تشغيل التطبيق على حاسوب الشخصي."
                     )
                 else:
