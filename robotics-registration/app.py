@@ -4,16 +4,32 @@
 المديرية الإقليمية نواصر — الثانوية التأهيلية علال بن عبد الله
 =================================================================
 Application Streamlit : formulaire d'inscription en arabe (RTL)
+- Champs : nom, prénom, classe (القسم) et groupe/fouj (الفوج)
+- Classes disponibles : TCLSH-1 + TCSF-1 → TCSF-9 (codes Massar)
 - 4 groupes (فوج) — 20 élèves maximum par groupe
 - Insistance sur la limite des places (bandeau d'alerte, statistiques, cartes)
 - Sauvegarde automatique des inscriptions dans inscriptions.json
+- Export Excel : sauvegarde locale inscriptions.xlsx après chaque inscription
+  + espace d'administration protégé par code (aperçu + téléchargement .xlsx)
 """
 
 import json
 import os
+import sys
 from datetime import datetime
 
 import streamlit as st
+
+# Import du module d'export Excel (même dossier que app.py)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+try:
+    from excel_export import build_excel_bytes, save_excel_file
+
+    EXCEL_OK = True
+except Exception:
+    EXCEL_OK = False
 
 try:
     from zoneinfo import ZoneInfo
@@ -33,7 +49,24 @@ st.set_page_config(
 
 MAX_PER_GROUP = 20  # limite stricte : 20 élèves au maximum par groupe
 
+# Code d'accès à l'espace d'administration (export Excel) — à personnaliser !
+ADMIN_CODE = "robot2026"
+
 GROUPS = ["الفوج الأول", "الفوج الثاني", "الفوج الثالث", "الفوج الرابع"]
+
+# Classes du tronc commun (codes officiels) — TCLSH : الآداب والعلوم الإنسانية، TCSF : علمي
+CLASSES = [
+    "TCLSH-1",
+    "TCSF-1",
+    "TCSF-2",
+    "TCSF-3",
+    "TCSF-4",
+    "TCSF-5",
+    "TCSF-6",
+    "TCSF-7",
+    "TCSF-8",
+    "TCSF-9",
+]
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inscriptions.json")
 
@@ -284,11 +317,27 @@ else:
         with col2:
             prenom = st.text_input("الاسم الشخصي *", placeholder="أدخل الاسم الشخصي...")
 
-        options = [
-            f"{g} — المقاعد المتبقية: {MAX_PER_GROUP - counts[g]}" for g in available_groups
-        ]
-        choice = st.selectbox("الفوج المطلوب *", options)
+        col3, col4 = st.columns(2)
+        with col3:
+            classe = st.selectbox(
+                "القسم *",
+                CLASSES,
+                index=None,
+                placeholder="اختر قسمك...",
+            )
+        with col4:
+            options = [
+                f"{g} — المقاعد المتبقية: {MAX_PER_GROUP - counts[g]}" for g in available_groups
+            ]
+            choice = st.selectbox("الفوج المطلوب *", options)
         groupe = available_groups[options.index(choice)]
+
+        st.markdown(
+            '<p style="font-size:0.82rem; color:#78909c; direction:ltr; text-align:left;">'
+            "TCLSH : جذع مشترك الآداب والعلوم الإنسانية &nbsp;|&nbsp; TCSF : جذع مشترك علمي"
+            "</p>",
+            unsafe_allow_html=True,
+        )
 
         st.markdown(
             '<p style="font-size:0.85rem; color:#78909c;">'
@@ -298,7 +347,7 @@ else:
         )
 
         submitted = st.form_submit_button(
-            "✅ تأكيد التسجيل", type="primary", use_container_width=True
+            "✅ تأكيد التسجيل", type="primary", width="stretch"
         )
 
     # --------------------------------------------------------
@@ -309,11 +358,14 @@ else:
 
         nom_clean = normalize(nom)
         prenom_clean = normalize(prenom)
+        classe_clean = normalize(classe or "")
 
         if len(nom_clean) < 2:
             errors.append("المرجو إدخال الاسم العائلي (حرفان على الأقل).")
         if len(prenom_clean) < 2:
             errors.append("المرجو إدخال الاسم الشخصي (حرفان على الأقل).")
+        if classe_clean not in CLASSES:
+            errors.append("المرجو اختيار القسم (TCLSH-1 أو TCSF).")
 
         # Recharger les données pour réduire les risques de concurrence
         rows_now = load_inscriptions()
@@ -341,23 +393,84 @@ else:
                     "id": next_id(rows_now),
                     "nom": nom_clean,
                     "prenom": prenom_clean,
+                    "classe": classe_clean,
                     "groupe": groupe,
                     "date_inscription": now_str(),
                 }
             )
             save_inscriptions(rows_now)
 
+            # Sauvegarde Excel locale automatique (silencieuse si FS en lecture seule)
+            if EXCEL_OK:
+                try:
+                    save_excel_file(rows_now, os.path.join(BASE_DIR, "inscriptions.xlsx"),
+                                    max_per_group=MAX_PER_GROUP)
+                except Exception:
+                    pass
+
             left_after = MAX_PER_GROUP - counts_now[groupe] - 1
 
             st.balloons()
             st.success(
-                f"🎉 تم تسجيل **{prenom_clean} {nom_clean}** بنجاح في **{groupe}**!\n\n"
+                f"🎉 تم تسجيل **{prenom_clean} {nom_clean}** — القسم **{classe_clean}** — في **{groupe}**!\n\n"
                 f"عدد المقاعد المتبقية في هذا الفوج: **{left_after}**\n\n"
                 "ملاحظة: يعتبر التسجيل مؤقتا إلى حين تأكيده من طرف إدارة الثانوية."
             )
 
 # ============================================================
-# 7) PIED DE PAGE
+# 8) ESPACE ADMINISTRATION : consultation + export Excel
+# ============================================================
+st.markdown("#### 🔒 فضاء الإدارة")
+with st.expander("فتح فضاء الإدارة — قائمة التسجيلات وتصدير ملف Excel"):
+    admin_code = st.text_input("رمز الإدارة:", type="password", placeholder="أدخل رمز الإدارة...")
+
+    if admin_code:
+        if admin_code == ADMIN_CODE:
+            if not data:
+                st.info("لا توجد تسجيلات بعد. ستظهر القائمة هنا بعد أول عملية تسجيل.")
+            else:
+                if EXCEL_OK:
+                    try:
+                        import pandas as pd
+
+                        df = pd.DataFrame(
+                            [
+                                {
+                                    "رقم": r.get("id"),
+                                    "الاسم العائلي": r.get("nom", ""),
+                                    "الاسم الشخصي": r.get("prenom", ""),
+                                    "القسم": r.get("classe", ""),
+                                    "الفوج": r.get("groupe", ""),
+                                    "تاريخ التسجيل": r.get("date_inscription", ""),
+                                }
+                                for r in data
+                            ]
+                        )
+                        st.dataframe(df, width="stretch", hide_index=True)
+                    except Exception:
+                        pass
+
+                    stamp = datetime.now(TZ).strftime("%Y-%m-%d") if TZ else datetime.now().strftime("%Y-%m-%d")
+                    st.download_button(
+                        "⬇️ تحميل قائمة التسجيلات (ملف Excel)",
+                        data=build_excel_bytes(data, max_per_group=MAX_PER_GROUP),
+                        file_name=f"inscriptions_robotique_{stamp}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        width="stretch",
+                    )
+                    st.caption(
+                        "يحتوي الملف على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم. "
+                        "كما يُحفظ نسخة محلية تلقائية (inscriptions.xlsx) بعد كل عملية تسجيل عند تشغيل التطبيق على حاسوب الشخصي."
+                    )
+                else:
+                    st.error(
+                        "مكتبة openpyxl غير مثبتة. المرجو تنفيذ الأمر: pip install openpyxl ثم إعادة تشغيل التطبيق."
+                    )
+        else:
+            st.error("رمز غير صحيح. المرجو المحاولة من جديد.")
+
+# ============================================================
+# 9) PIED DE PAGE
 # ============================================================
 st.markdown(
     """

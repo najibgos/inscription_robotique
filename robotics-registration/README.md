@@ -10,7 +10,9 @@ destinée aux élèves du **tronc commun**.
 
 - Interface entièrement en **arabe (RTL)** avec police arabe (Cairo) et champs alignés à droite
 - Entête officielle de l'établissement
-- Champs du formulaire : **الاسم العائلي** (nom), **الاسم الشخصي** (prénom), **الفوج** (choix parmi 4 groupes)
+- Champs du formulaire : **الاسم العائلي** (nom), **الاسم الشخصي** (prénom), **القسم** (classe), **الفوج** (choix parmi 4 groupes)
+- **Champ classe (القسم)** avec les codes officiels : `TCLSH-1`, `TCSF-1` → `TCSF-9`
+  (menu déroulant obligatoire, choix vide refusé à la validation)
 - **Limite stricte : 20 élèves maximum par groupe**, contrôlée côté application au moment de la validation
 - Insistance sur la limite des places :
   - bandeau d'avertissement (⚠️ عدد المقاعد محدود) ;
@@ -22,11 +24,15 @@ destinée aux élèves du **tronc commun**.
 - Détection des doublons (même nom + prénom déjà inscrit)
 - Horodatage des inscriptions à l'heure du Maroc (Africa/Casablanca)
 - Sauvegarde automatique dans `inscriptions.json`
+- **Export Excel** :
+  - sauvegarde locale automatique de `inscriptions.xlsx` après chaque inscription (quand l'app tourne sur un ordinateur) ;
+  - **espace d'administration** (section « 🔒 فضاء الإدارة » en bas de page, protégé par code) : tableau des inscriptions + bouton de téléchargement `inscriptions_robotique_YYYY-MM-DD.xlsx` ;
+  - le classeur contient 2 feuilles en droite-à-gauche : **التسجيلات** (liste complète stylée, en-têtes figés, prête à imprimer) et **إحصائيات** (répartition par فوج avec places restantes et taux de remplissage + répartition par قسم).
 
 ## 🚀 Installation & lancement
 
 ```bash
-pip install streamlit
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
@@ -41,7 +47,18 @@ L'application s'ouvre automatiquement sur http://localhost:8501
 | Fichier | Rôle |
 |---|---|
 | `app.py` | Application Streamlit (formulaire) |
+| `excel_export.py` | Génération du classeur Excel (liste + statistiques) |
+| `requirements.txt` | Dépendances (`streamlit`, `openpyxl`) — utilisée par Streamlit Cloud |
 | `inscriptions.json` | Données des inscriptions — créé automatiquement au premier enregistrement |
+| `inscriptions.xlsx` | Export Excel local — mis à jour automatiquement après chaque inscription |
+
+## 🔐 Espace d'administration (export Excel)
+
+En bas de la page, la section **« 🔒 فضاء الإدارة »** demande un code :
+
+- Code par défaut : **`robot2026`**
+- Pour le changer : modifiez la ligne `ADMIN_CODE = "robot2026"` au début de `app.py` (conseillé avant la mise en ligne).
+- Une fois le code saisi : tableau des inscrits + bouton **« ⬇️ تحميل قائمة التسجيلات (ملف Excel) »**.
 
 ## 🔄 Réinitialiser les inscriptions
 
@@ -49,5 +66,8 @@ Supprimez le fichier `inscriptions.json` (ou remplacez son contenu par `[]`) pui
 
 ## 📊 Consulter / exploiter les inscriptions
 
-Le fichier `inscriptions.json` contient, pour chaque élève : `id`, `nom`, `prenom`, `groupe`, `date_inscription`.
-Il peut être ouvert avec n'importe quel éditeur de texte ou importé dans Excel pour l'impression des listes.
+Trois méthodes :
+
+1. **Espace d'administration** dans l'app (code `robot2026`) → téléchargement direct du fichier Excel ;
+2. **`inscriptions.xlsx`** : mis à jour automatiquement après chaque inscription quand l'app tourne localement ;
+3. **`inscriptions.json`** : contient pour chaque élève `id`, `nom`, `prenom`, `classe`, `groupe`, `date_inscription` — ouvrable dans un éditeur de texte ou importable dans Excel.
