@@ -10,9 +10,14 @@ destinée aux élèves du **tronc commun**.
 
 - Interface entièrement en **arabe (RTL)** avec police arabe (Cairo) et champs alignés à droite
 - Entête officielle de l'établissement
-- Champs du formulaire : **الاسم العائلي** (nom), **الاسم الشخصي** (prénom), **القسم** (classe), **الفوج** (choix parmi 4 groupes)
+- Champs du formulaire : **الاسم العائلي** (nom), **الاسم الشخصي** (prénom), **القسم** (classe), **اليوم** (jour), **التوقيت** (créneau horaire), **الفوج** (choix parmi 4 groupes)
 - **Champ classe (القسم)** avec les codes officiels : `TCLSH-1`, `TCSF-1` → `TCSF-9`
   (menu déroulant obligatoire, choix vide refusé à la validation)
+- **Choix du créneau horaire** : ateliers à partir du **lundi 26 octobre 2026**, du lundi au jeudi
+  entre 14h00 et 18h00 — l'élève choisit un jour (`الاثنين` / `الثلاثاء` / `الأربعاء` / `الخميس`)
+  et un créneau (`14:00 – 16:00` ou `16:00 – 18:00`) ; les deux choix sont obligatoires.
+  Pour ajuster les créneaux, modifiez la constante `TIME_SLOTS` en début de `app.py`
+  (et la copie identique dans `excel_export.py`).
 - **Limite stricte : 20 élèves maximum par groupe**, contrôlée côté application au moment de la validation
 - Insistance sur la limite des places :
   - bandeau d'avertissement (⚠️ عدد المقاعد محدود) ;
@@ -27,7 +32,7 @@ destinée aux élèves du **tronc commun**.
 - **Export Excel** :
   - sauvegarde locale automatique de `inscriptions.xlsx` après chaque inscription (quand l'app tourne sur un ordinateur) ;
   - **espace d'administration** (section « 🔒 فضاء الإدارة » en bas de page, protégé par code) : tableau des inscriptions + bouton de téléchargement `inscriptions_robotique_YYYY-MM-DD.xlsx` ;
-  - le classeur contient 2 feuilles en droite-à-gauche : **التسجيلات** (liste complète stylée, en-têtes figés, prête à imprimer) et **إحصائيات** (répartition par فوج avec places restantes et taux de remplissage + répartition par قسم).
+  - le classeur contient 2 feuilles en droite-à-gauche : **التسجيلات** (liste complète stylée, en-têtes figés, prête à imprimer) et **إحصائيات** (répartition par فوج avec places restantes et taux de remplissage + répartition par قسم + **التوزيع حسب الموعد** : jour × créneau).
 
 ## 🚀 Installation & lancement
 
@@ -70,4 +75,4 @@ Trois méthodes :
 
 1. **Espace d'administration** dans l'app (code `robot2026`) → téléchargement direct du fichier Excel ;
 2. **`inscriptions.xlsx`** : mis à jour automatiquement après chaque inscription quand l'app tourne localement ;
-3. **`inscriptions.json`** : contient pour chaque élève `id`, `nom`, `prenom`, `classe`, `groupe`, `date_inscription` — ouvrable dans un éditeur de texte ou importable dans Excel.
+3. **`inscriptions.json`** : contient pour chaque élève `id`, `nom`, `prenom`, `classe`, `groupe`, `jour`, `horaire`, `date_inscription` — ouvrable dans un éditeur de texte ou importable dans Excel.

@@ -4,8 +4,11 @@
 المديرية الإقليمية نواصر — الثانوية التأهيلية علال بن عبد الله
 =================================================================
 Application Streamlit : formulaire d'inscription en arabe (RTL)
-- Champs : nom, prénom, classe (القسم) et groupe/fouj (الفوج)
+- Champs : nom, prénom, classe (القسم), jour (اليوم), créneau horaire (التوقيت)
+  et groupe/fouj (الفوج)
 - Classes disponibles : TCLSH-1 + TCSF-1 → TCSF-9 (codes Massar)
+- Horaires : ateliers à partir du lundi 26 octobre 2026, du lundi au jeudi
+  entre 14h00 et 18h00 (2 créneaux : 14:00-16:00 et 16:00-18:00)
 - 4 groupes (فوج) — 20 élèves maximum par groupe
 - Insistance sur la limite des places (bandeau d'alerte, statistiques, cartes)
 - Sauvegarde automatique des inscriptions dans inscriptions.json
@@ -67,6 +70,11 @@ CLASSES = [
     "TCSF-8",
     "TCSF-9",
 ]
+
+# Jours et créneaux des ateliers — à partir du lundi 26 octobre 2026,
+# du lundi au jeudi entre 14h00 et 18h00 (2 créneaux de 2 heures)
+DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+TIME_SLOTS = ["14:00 – 16:00", "16:00 – 18:00"]
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inscriptions.json")
 
@@ -351,6 +359,30 @@ else:
             unsafe_allow_html=True,
         )
 
+        col5, col6 = st.columns(2)
+        with col5:
+            jour = st.selectbox(
+                "اليوم *",
+                DAYS,
+                index=None,
+                placeholder="اختر اليوم...",
+            )
+        with col6:
+            horaire = st.selectbox(
+                "التوقيت *",
+                TIME_SLOTS,
+                index=None,
+                placeholder="اختر التوقيت...",
+            )
+
+        st.markdown(
+            '<p style="font-size:0.85rem; color:#78909c;">'
+            "🕐 تبدأ الورشات ابتداء من <b>الاثنين 26 أكتوبر 2026</b> — من الاثنين إلى الخميس، "
+            "بين الساعة <b>14:00</b> و<b>18:00</b>. المرجو اختيار اليوم والتوقيت المناسبين لك."
+            "</p>",
+            unsafe_allow_html=True,
+        )
+
         st.markdown(
             '<p style="font-size:0.85rem; color:#78909c;">'
             "* جميع الحقول إلزامية. تُحفظ معلوماتك في قائمة التسجيلات حسب أسبقية الوصول."
@@ -371,6 +403,8 @@ else:
         nom_clean = normalize(nom)
         prenom_clean = normalize(prenom)
         classe_clean = normalize(classe or "")
+        jour_clean = normalize(jour or "")
+        horaire_clean = normalize(horaire or "")
 
         if len(nom_clean) < 2:
             errors.append("المرجو إدخال الاسم العائلي (حرفان على الأقل).")
@@ -378,6 +412,10 @@ else:
             errors.append("المرجو إدخال الاسم الشخصي (حرفان على الأقل).")
         if classe_clean not in CLASSES:
             errors.append("المرجو اختيار القسم (TCLSH-1 أو TCSF).")
+        if jour_clean not in DAYS:
+            errors.append("المرجو اختيار اليوم (من الاثنين إلى الخميس).")
+        if horaire_clean not in TIME_SLOTS:
+            errors.append("المرجو اختيار التوقيت (14:00–16:00 أو 16:00–18:00).")
 
         # Recharger les données pour réduire les risques de concurrence
         rows_now = load_inscriptions()
@@ -407,6 +445,8 @@ else:
                     "prenom": prenom_clean,
                     "classe": classe_clean,
                     "groupe": groupe,
+                    "jour": jour_clean,
+                    "horaire": horaire_clean,
                     "date_inscription": now_str(),
                 }
             )
@@ -425,6 +465,8 @@ else:
             st.balloons()
             st.success(
                 f"🎉 تم تسجيل **{prenom_clean} {nom_clean}** — القسم **{classe_clean}** — في **{groupe}**!\n\n"
+                f"🕒 الموعد المختار: يوم **{jour_clean}**، التوقيت **{horaire_clean}** "
+                "(انطلاقا من الاثنين 26 أكتوبر 2026)\n\n"
                 f"عدد المقاعد المتبقية في هذا الفوج: **{left_after}**\n\n"
                 "ملاحظة: يعتبر التسجيل مؤقتا إلى حين تأكيده من طرف إدارة الثانوية."
             )
@@ -453,6 +495,8 @@ with st.expander("فتح فضاء الإدارة — قائمة التسجيلا
                                     "الاسم الشخصي": r.get("prenom", ""),
                                     "القسم": r.get("classe", ""),
                                     "الفوج": r.get("groupe", ""),
+                                    "اليوم": r.get("jour", ""),
+                                    "التوقيت": r.get("horaire", ""),
                                     "تاريخ التسجيل": r.get("date_inscription", ""),
                                 }
                                 for r in data
@@ -471,7 +515,7 @@ with st.expander("فتح فضاء الإدارة — قائمة التسجيلا
                         width="stretch",
                     )
                     st.caption(
-                        "يحتوي الملف على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم. "
+                        "يحتوي الملف على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم والموعد. "
                         "كما يُحفظ نسخة محلية تلقائية (inscriptions.xlsx) بعد كل عملية تسجيل عند تشغيل التطبيق على حاسوب الشخصي."
                     )
                 else:

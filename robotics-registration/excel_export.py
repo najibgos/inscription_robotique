@@ -5,9 +5,9 @@ Export Excel des inscriptions aux ateliers de robotique
 =================================================================
 Génère un classeur .xlsx en arabe (feuilles RTL) contenant :
   - Feuille 1 « التسجيلات »  : liste complète des inscrits (id, nom, prénom,
-    classe, فوج, date) avec ligne de total et en-têtes figés à l'impression.
+    classe, فوج, jour, créneau, date) avec ligne de total et en-têtes figés.
   - Feuille 2 « إحصائيات » : répartition par فوج (places restantes, taux de
-    remplissage) et par قسم (classe).
+    remplissage), par قسم (classe) et par موعد (jour + créneau).
 
 Style dérivé d'un design system « borderless-first » (3 couleurs max) :
 PRIMARY teal de l'application, SECONDARY version claire, neutres chauds,
@@ -34,8 +34,8 @@ NEUTRAL_0 = "FFFFFF"    # lignes paires
 # Tahoma : excellent rendu de l'arabe sous Windows (Excel), macOS et LibreOffice
 FONT_NAME = "Tahoma"
 
-HEADERS = ["رقم", "الاسم العائلي", "الاسم الشخصي", "القسم", "الفوج", "تاريخ التسجيل"]
-COL_WIDTHS = [8, 18, 18, 12, 16, 21]
+HEADERS = ["رقم", "الاسم العائلي", "الاسم الشخصي", "القسم", "الفوج", "اليوم", "التوقيت", "تاريخ التسجيل"]
+COL_WIDTHS = [8, 18, 18, 12, 16, 12, 14, 21]
 
 GROUPS = ["الفوج الأول", "الفوج الثاني", "الفوج الثالث", "الفوج الرابع"]
 CLASSES = [
@@ -43,6 +43,10 @@ CLASSES = [
     "TCSF-1", "TCSF-2", "TCSF-3", "TCSF-4",
     "TCSF-5", "TCSF-6", "TCSF-7", "TCSF-8", "TCSF-9",
 ]
+
+# Jours et créneaux des ateliers (identiques à app.py)
+DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+TIME_SLOTS = ["14:00 – 16:00", "16:00 – 18:00"]
 
 
 def _font(size=11, bold=False, color=NEUTRAL_900):
@@ -107,7 +111,8 @@ def build_excel_bytes(rows, max_per_group=20):
     """Construit le classeur Excel (bytes) à partir des inscriptions.
 
     Args:
-        rows: liste de dictionnaires {id, nom, prenom, classe, groupe, date_inscription}
+        rows: liste de dictionnaires {id, nom, prenom, classe, groupe, jour,
+              horaire, date_inscription}
         max_per_group: capacité maximale par فوج (pour les statistiques)
 
     Returns:
@@ -144,12 +149,14 @@ def build_excel_bytes(rows, max_per_group=20):
             row.get("prenom", ""),
             row.get("classe", ""),
             row.get("groupe", ""),
+            row.get("jour", ""),
+            row.get("horaire", ""),
             row.get("date_inscription", ""),
         ]
         for c_idx, v in enumerate(values):
             cell = ws.cell(row=row_num, column=2 + c_idx, value=v)
-            # centrer : id, classe, date — droite : textes arabes
-            horizontal = "center" if c_idx in (0, 3, 5) else "right"
+            # centrer : id, classe, jour, créneau, date — droite : textes arabes
+            horizontal = "center" if c_idx in (0, 3, 5, 6, 7) else "right"
             _style_data_cell(cell, r_idx, horizontal=horizontal)
         ws.row_dimensions[row_num].height = 22
 
@@ -188,7 +195,7 @@ def build_excel_bytes(rows, max_per_group=20):
 
     headers_a = ["الفوج", "عدد المسجلين", "المقاعد المتبقية", "نسبة الامتلاء"]
     _style_header(ws2, 6, headers_a)
-    for i, w in enumerate([16, 14, 16, 14]):
+    for i, w in enumerate([16, 15, 16, 14]):
         ws2.column_dimensions[get_column_letter(2 + i)].width = w
 
     r = 7
@@ -230,10 +237,52 @@ def build_excel_bytes(rows, max_per_group=20):
     ws2.cell(row=r, column=3, value=sum(counts_class.values()))
     _style_total_row(ws2, r, 2, 3)
 
-    # Note de bas de tableau
+    # ---- Section C : répartition par موعد (jour + créneau) ----
+    counts_slot = {}
+    for row in rows:
+        j = row.get("jour", "")
+        h = row.get("horaire", "")
+        if j in DAYS and h in TIME_SLOTS:
+            counts_slot[(j, h)] = counts_slot.get((j, h), 0) + 1
+
+    sec_c = r + 3
+    ws2.cell(row=sec_c, column=2, value="التوزيع حسب الموعد (اليوم والتوقيت)").font = _font(
+        12, bold=True, color=PRIMARY
+    )
+    ws2.row_dimensions[sec_c].height = 24
+
+    headers_c = ["اليوم", "التوقيت", "عدد المسجلين"]
+    _style_header(ws2, sec_c + 1, headers_c)
+
+    r = sec_c + 2
+    idx = 0
+    for j in DAYS:
+        for h in TIME_SLOTS:
+            cell1 = ws2.cell(row=r, column=2, value=j)
+            _style_data_cell(cell1, idx, horizontal="center")
+            cell2 = ws2.cell(row=r, column=3, value=h)
+            _style_data_cell(cell2, idx, horizontal="center")
+            cell3 = ws2.cell(row=r, column=4, value=counts_slot.get((j, h), 0))
+            _style_data_cell(cell3, idx, horizontal="center")
+            ws2.row_dimensions[r].height = 22
+            r += 1
+            idx += 1
+
+    ws2.cell(row=r, column=2, value="المجموع")
+    ws2.cell(row=r, column=4, value=sum(counts_slot.values()))
+    _style_total_row(ws2, r, 2, 4)
+
+    # Notes de bas de tableau
     note = ws2.cell(row=r + 2, column=2, value="الطاقة الاستيعابية: 4 فوجات × 20 تلميذا = 80")
     note.font = _font(9, color=NEUTRAL_600)
     note.alignment = Alignment(horizontal="right", vertical="center")
+    note2 = ws2.cell(
+        row=r + 3,
+        column=2,
+        value="موعد الورشات: انطلاقا من الاثنين 26 أكتوبر 2026 — من الاثنين إلى الخميس، بين 14:00 و18:00",
+    )
+    note2.font = _font(9, color=NEUTRAL_600)
+    note2.alignment = Alignment(horizontal="right", vertical="center")
 
     wb.properties.creator = "Z.ai"
 
