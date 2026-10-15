@@ -11,12 +11,18 @@ Génère un classeur .xlsx en arabe (feuilles RTL) contenant :
     remplissage), par قسم (classe), par حصة (jour + créneau, avec capacité,
     places restantes et taux de remplissage) et par paire de jours (اليومان).
 
+Génère aussi une sauvegarde CSV (inscriptions.csv) : UTF-8 avec BOM (l'arabe
+s'affiche correctement à l'ouverture dans Excel), séparateur « ; » (compatible
+avec la configuration régionale française/arabe d'Excel), fins de ligne CRLF.
+
 Style dérivé d'un design system « borderless-first » (3 couleurs max) :
 PRIMARY teal de l'application, SECONDARY version claire, neutres chauds,
 lignes alternées, pas de grille pleine.
 """
 
 from datetime import datetime
+from io import BytesIO, StringIO
+import csv
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -381,3 +387,54 @@ def save_excel_file(rows, path, max_per_group=20, max_per_slot=20):
         f.write(
             build_excel_bytes(rows, max_per_group=max_per_group, max_per_slot=max_per_slot)
         )
+
+
+# ------------------------------------------------------------
+# Export CSV — sauvegarde locale de secours (inscriptions.csv)
+# ------------------------------------------------------------
+def _csv_rows(rows):
+    """Lignes de données CSV (même colonnes et même compatibilité que l'Excel :
+    ancien champ horaire unique partagé ou jour seul pris en compte)."""
+    out = []
+    for row in rows:
+        out.append(
+            [
+                row.get("id", ""),
+                row.get("nom", ""),
+                row.get("prenom", ""),
+                row.get("classe", ""),
+                row.get("groupe", ""),
+                row.get("jour1", row.get("jour", "")),
+                row.get("horaire1") or row.get("horaire", ""),
+                row.get("jour2", ""),
+                (row.get("horaire2") or row.get("horaire", "")) if row.get("jour2") else "",
+                row.get("date_inscription", ""),
+            ]
+        )
+    return out
+
+
+def build_csv_bytes(rows):
+    """Construit le fichier CSV (bytes).
+
+    - Encodage UTF-8 avec BOM : les caractères arabes s'affichent correctement
+      dès l'ouverture dans Excel (sinon ils apparaissent en caractères illisibles).
+    - Séparateur « ; » : s'ouvre directement en colonnes dans Excel configuré
+      en locale française (Maroc) — le séparateur « , » donnerait une seule colonne.
+    - Fins de ligne CRLF (standard Excel).
+
+    Returns:
+        bytes du fichier .csv
+    """
+    buf = StringIO()
+    writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    writer.writerow(HEADERS)
+    for vals in _csv_rows(rows):
+        writer.writerow(["" if v is None else v for v in vals])
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def save_csv_file(rows, path):
+    """Sauvegarde locale du CSV (inscriptions.csv à côté de l'app)."""
+    with open(path, "wb") as f:
+        f.write(build_csv_bytes(rows))

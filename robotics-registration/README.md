@@ -40,9 +40,16 @@ destinée aux élèves du **tronc commun**.
 - Détection des doublons (même nom + prénom déjà inscrit)
 - Horodatage des inscriptions à l'heure du Maroc (Africa/Casablanca)
 - Sauvegarde automatique dans `inscriptions.json`
-- **Export Excel** :
-  - sauvegarde locale automatique de `inscriptions.xlsx` après chaque inscription (quand l'app tourne sur un ordinateur) ;
-  - **espace d'administration** (section « 🔒 فضاء الإدارة » en bas de page, protégé par code) : tableau des inscriptions + bouton de téléchargement `inscriptions_robotique_YYYY-MM-DD.xlsx` ;
+- **Double sauvegarde locale de secours après chaque inscription** (quand l'app
+  tourne sur un ordinateur) pour ne jamais perdre les informations : un fichier
+  **Excel** `inscriptions.xlsx` + un fichier **CSV** `inscriptions.csv` contenant
+  exactement les mêmes colonnes — si l'un est perdu ou corrompu, l'autre reste
+  exploitable. Le CSV est encodé en **UTF-8 avec BOM** (l'arabe s'affiche
+  directement dans Excel) avec séparateur « **;** » (s'ouvre en colonnes dans
+  Excel en configuration régionale française/Maroc) et fins de ligne CRLF.
+- **Export Excel + CSV** :
+  - sauvegarde locale automatique de `inscriptions.xlsx` et `inscriptions.csv` après chaque inscription ;
+  - **espace d'administration** (section « 🔒 فضاء الإدارة » en bas de page, protégé par code) : tableau des inscriptions + bouton de téléchargement `inscriptions_robotique_YYYY-MM-DD.xlsx` **+ bouton de téléchargement `inscriptions_robotique_YYYY-MM-DD.csv`** ;
   - le classeur contient 2 feuilles en droite-à-gauche : **التسجيلات** (liste complète stylée avec
     les 2 séances : يوم + توقيت de chacune, en-têtes figés, prête à imprimer) et **إحصائيات**
     (répartition par فوج avec places restantes et taux de remplissage + répartition par قسم +
@@ -67,18 +74,20 @@ L'application s'ouvre automatiquement sur http://localhost:8501
 | Fichier | Rôle |
 |---|---|
 | `app.py` | Application Streamlit (formulaire) |
-| `excel_export.py` | Génération du classeur Excel (liste + statistiques) |
+| `excel_export.py` | Génération du classeur Excel (liste + statistiques) et du CSV de secours |
 | `requirements.txt` | Dépendances (`streamlit`, `openpyxl`) — utilisée par Streamlit Cloud |
 | `inscriptions.json` | Données des inscriptions — créé automatiquement au premier enregistrement |
 | `inscriptions.xlsx` | Export Excel local — mis à jour automatiquement après chaque inscription |
+| `inscriptions.csv` | Sauvegarde CSV de sécurité — mêmes colonnes, mise à jour en même temps que l'Excel |
 
-## 🔐 Espace d'administration (export Excel)
+## 🔐 Espace d'administration (export Excel & CSV)
 
 En bas de la page, la section **« 🔒 فضاء الإدارة »** demande un code :
 
 - Code par défaut : **`robot2026`**
 - Pour le changer : modifiez la ligne `ADMIN_CODE = "robot2026"` au début de `app.py` (conseillé avant la mise en ligne).
-- Une fois le code saisi : tableau des inscrits + bouton **« ⬇️ تحميل قائمة التسجيلات (ملف Excel) »**.
+- Une fois le code saisi : tableau des inscrits + bouton **« ⬇️ تحميل قائمة التسجيلات (ملف Excel) »**
+  et bouton **« ⬇️ تحميل قائمة التسجيلات (ملف CSV) »**.
 
 ## 🔄 Réinitialiser les inscriptions
 
@@ -88,8 +97,8 @@ Supprimez le fichier `inscriptions.json` (ou remplacez son contenu par `[]`) pui
 
 Trois méthodes :
 
-1. **Espace d'administration** dans l'app (code `robot2026`) → téléchargement direct du fichier Excel ;
-2. **`inscriptions.xlsx`** : mis à jour automatiquement après chaque inscription quand l'app tourne localement ;
+1. **Espace d'administration** dans l'app (code `robot2026`) → téléchargement direct du fichier Excel **ou du fichier CSV** ;
+2. **`inscriptions.xlsx`** ou **`inscriptions.csv`** : mis à jour automatiquement après chaque inscription quand l'app tourne localement (le CSV s'ouvre directement dans Excel, l'arabe s'affiche correctement grâce au BOM UTF-8) ;
 3. **`inscriptions.json`** : contient pour chaque élève `id`, `nom`, `prenom`, `classe`, `groupe`,
    `jour1`, `horaire1`, `jour2`, `horaire2`, `date_inscription` — ouvrable dans un éditeur de
    texte ou importable dans Excel. Les anciens enregistrements (`jour` seul, ou `jour1`/`jour2`

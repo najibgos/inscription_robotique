@@ -18,8 +18,11 @@ Application Streamlit : formulaire d'inscription en arabe (RTL)
   maximum par حصة)
 - Insistance sur la limite des places (bandeau d'alerte, statistiques, cartes)
 - Sauvegarde automatique des inscriptions dans inscriptions.json
-- Export Excel : sauvegarde locale inscriptions.xlsx après chaque inscription
-  + espace d'administration protégé par code (aperçu + téléchargement .xlsx)
+- Double sauvegarde locale de secours après chaque inscription :
+  inscriptions.xlsx (classeur stylé) + inscriptions.csv (CSV de sécurité,
+  UTF-8 avec BOM, séparateur « ; ») — pour ne jamais perdre les informations
+- Export Excel : aperçu + téléchargement .xlsx ET .csv depuis l'espace
+  d'administration protégé par code (robot2026)
 """
 
 import json
@@ -34,7 +37,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 try:
-    from excel_export import build_excel_bytes, save_excel_file
+    from excel_export import (
+        build_csv_bytes,
+        build_excel_bytes,
+        save_csv_file,
+        save_excel_file,
+    )
 
     EXCEL_OK = True
 except Exception:
@@ -406,7 +414,7 @@ else:
         groupe = available_groups[options.index(choice)]
 
         st.markdown(
-            '<p style="font-size:0.82rem; color:#78909c; direction:ltr; text-align:left;">'
+            '<p style="font-size:0.82rem; color:#78909c; direction:rtl; text-align:right;">'
             "TCLSH : جذع مشترك الآداب والعلوم الإنسانية &nbsp;|&nbsp; TCSF : جذع مشترك علمي"
             "</p>",
             unsafe_allow_html=True,
@@ -553,7 +561,9 @@ else:
             )
             save_inscriptions(rows_now)
 
-            # Sauvegarde Excel locale automatique (silencieuse si FS en lecture seule)
+            # Sauvegardes locales automatiques (silencieuses si FS en lecture seule)
+            # Excel stylé + CSV de secours : deux copies indépendantes pour ne
+            # jamais perdre les informations des inscrits.
             if EXCEL_OK:
                 try:
                     save_excel_file(
@@ -562,6 +572,10 @@ else:
                         max_per_group=MAX_PER_GROUP,
                         max_per_slot=MAX_PER_SLOT,
                     )
+                except Exception:
+                    pass
+                try:
+                    save_csv_file(rows_now, os.path.join(BASE_DIR, "inscriptions.csv"))
                 except Exception:
                     pass
 
@@ -624,9 +638,18 @@ with st.expander("فتح فضاء الإدارة — قائمة التسجيلا
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         width="stretch",
                     )
+                    st.download_button(
+                        "⬇️ تحميل قائمة التسجيلات (ملف CSV)",
+                        data=build_csv_bytes(data),
+                        file_name=f"inscriptions_robotique_{stamp}.csv",
+                        mime="text/csv",
+                        width="stretch",
+                    )
                     st.caption(
-                        "يحتوي الملف على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم والحصة وأيام الحصتين. "
-                        "كما يُحفظ نسخة محلية تلقائية (inscriptions.xlsx) بعد كل عملية تسجيل عند تشغيل التطبيق على حاسوب الشخصي."
+                        "ملف Excel يحتوي على ورقتين: قائمة التسجيلات كاملة + إحصائيات حسب الفوج والقسم والحصة وأيام الحصتين. "
+                        "وملف CSV نسخة احتياطية بسيطة بنفس المعلومات (تُفتح مباشرة في Excel). "
+                        "كما تُحفظ نسختان محليتان تلقائيا (inscriptions.xlsx + inscriptions.csv) بعد كل عملية تسجيل "
+                        "عند تشغيل التطبيق على حاسوب شخصي — للحفاظ على المعلومات وعدم فقدانها."
                     )
                 else:
                     st.error(
