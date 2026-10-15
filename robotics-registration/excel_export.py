@@ -7,7 +7,8 @@ Génère un classeur .xlsx en arabe (feuilles RTL) contenant :
   - Feuille 1 « التسجيلات »  : liste complète des inscrits (id, nom, prénom,
     classe, فوج, jour, créneau, date) avec ligne de total et en-têtes figés.
   - Feuille 2 « إحصائيات » : répartition par فوج (places restantes, taux de
-    remplissage), par قسم (classe) et par موعد (jour + créneau).
+    remplissage), par قسم (classe) et par موعد (jour + créneau, avec capacité,
+    places restantes et taux de remplissage).
 
 Style dérivé d'un design system « borderless-first » (3 couleurs max) :
 PRIMARY teal de l'application, SECONDARY version claire, neutres chauds,
@@ -44,9 +45,14 @@ CLASSES = [
     "TCSF-5", "TCSF-6", "TCSF-7", "TCSF-8", "TCSF-9",
 ]
 
-# Jours et créneaux des ateliers (identiques à app.py)
+# Jours et créneaux des ateliers (identiques à app.py) — séances d'une heure
 DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
-TIME_SLOTS = ["14:00 – 16:00", "16:00 – 18:00"]
+TIME_SLOTS = [
+    "14:00 – 15:00",
+    "15:00 – 16:00",
+    "16:00 – 17:00",
+    "17:00 – 18:00",
+]
 
 
 def _font(size=11, bold=False, color=NEUTRAL_900):
@@ -107,13 +113,14 @@ def _style_total_row(ws, row_num, start_col, end_col):
     ws.row_dimensions[row_num].height = 26
 
 
-def build_excel_bytes(rows, max_per_group=20):
+def build_excel_bytes(rows, max_per_group=20, max_per_slot=20):
     """Construit le classeur Excel (bytes) à partir des inscriptions.
 
     Args:
         rows: liste de dictionnaires {id, nom, prenom, classe, groupe, jour,
               horaire, date_inscription}
         max_per_group: capacité maximale par فوج (pour les statistiques)
+        max_per_slot: capacité maximale par موعد (jour + créneau)
 
     Returns:
         bytes du fichier .xlsx
@@ -177,7 +184,7 @@ def build_excel_bytes(rows, max_per_group=20):
     # FEUILLE 2 — إحصائيات (statistiques par فوج et par قسم)
     # ==========================================================
     ws2 = wb.create_sheet("إحصائيات")
-    _setup_sheet(ws2, "إحصائيات التسجيلات", subtitle, 5)
+    _setup_sheet(ws2, "إحصائيات التسجيلات", subtitle, 7)
 
     counts_group = {g: 0 for g in GROUPS}
     counts_class = {c: 0 for c in CLASSES}
@@ -195,7 +202,7 @@ def build_excel_bytes(rows, max_per_group=20):
 
     headers_a = ["الفوج", "عدد المسجلين", "المقاعد المتبقية", "نسبة الامتلاء"]
     _style_header(ws2, 6, headers_a)
-    for i, w in enumerate([16, 15, 16, 14]):
+    for i, w in enumerate([16, 15, 16, 14, 17, 14]):  # B..G (commun aux 3 sections)
         ws2.column_dimensions[get_column_letter(2 + i)].width = w
 
     r = 7
@@ -251,35 +258,52 @@ def build_excel_bytes(rows, max_per_group=20):
     )
     ws2.row_dimensions[sec_c].height = 24
 
-    headers_c = ["اليوم", "التوقيت", "عدد المسجلين"]
+    headers_c = ["اليوم", "التوقيت", "عدد المسجلين", "السعة", "المقاعد المتبقية", "نسبة الامتلاء"]
     _style_header(ws2, sec_c + 1, headers_c)
 
     r = sec_c + 2
     idx = 0
     for j in DAYS:
         for h in TIME_SLOTS:
-            cell1 = ws2.cell(row=r, column=2, value=j)
-            _style_data_cell(cell1, idx, horizontal="center")
-            cell2 = ws2.cell(row=r, column=3, value=h)
-            _style_data_cell(cell2, idx, horizontal="center")
-            cell3 = ws2.cell(row=r, column=4, value=counts_slot.get((j, h), 0))
-            _style_data_cell(cell3, idx, horizontal="center")
+            n = counts_slot.get((j, h), 0)
+            remain = max_per_slot - n
+            ratio = n / max_per_slot if max_per_slot else 0
+            for c_idx, v in enumerate([j, h, n, max_per_slot, remain, ratio]):
+                cell = ws2.cell(row=r, column=2 + c_idx, value=v)
+                _style_data_cell(cell, idx, horizontal="center")
+                if c_idx == 5:
+                    cell.number_format = "0%"
             ws2.row_dimensions[r].height = 22
             r += 1
             idx += 1
 
+    slots_capacity = len(DAYS) * len(TIME_SLOTS) * max_per_slot
+    n_slots_total = sum(counts_slot.values())
     ws2.cell(row=r, column=2, value="المجموع")
-    ws2.cell(row=r, column=4, value=sum(counts_slot.values()))
-    _style_total_row(ws2, r, 2, 4)
+    ws2.cell(row=r, column=4, value=n_slots_total)
+    ws2.cell(row=r, column=5, value=slots_capacity)
+    ws2.cell(row=r, column=6, value=slots_capacity - n_slots_total)
+    cell_ratio = ws2.cell(
+        row=r, column=7, value=(n_slots_total / slots_capacity) if slots_capacity else 0
+    )
+    _style_total_row(ws2, r, 2, 7)
+    cell_ratio.number_format = "0%"
 
     # Notes de bas de tableau
-    note = ws2.cell(row=r + 2, column=2, value="الطاقة الاستيعابية: 4 فوجات × 20 تلميذا = 80")
+    note = ws2.cell(
+        row=r + 2,
+        column=2,
+        value=(
+            f"الطاقة الاستيعابية: {len(GROUPS)} أفواج × {max_per_group} تلميذا = "
+            f"{len(GROUPS) * max_per_group} — بحد أقصى {max_per_slot} تلاميذا في كل موعد"
+        ),
+    )
     note.font = _font(9, color=NEUTRAL_600)
     note.alignment = Alignment(horizontal="right", vertical="center")
     note2 = ws2.cell(
         row=r + 3,
         column=2,
-        value="موعد الورشات: انطلاقا من الاثنين 26 أكتوبر 2026 — من الاثنين إلى الخميس، بين 14:00 و18:00",
+        value="موعد الورشات: انطلاقا من الاثنين 26 أكتوبر 2026 — من الاثنين إلى الخميس، بين 14:00 و18:00 — مدة كل حصة ساعة واحدة",
     )
     note2.font = _font(9, color=NEUTRAL_600)
     note2.alignment = Alignment(horizontal="right", vertical="center")
@@ -293,7 +317,9 @@ def build_excel_bytes(rows, max_per_group=20):
     return bio.getvalue()
 
 
-def save_excel_file(rows, path, max_per_group=20):
+def save_excel_file(rows, path, max_per_group=20, max_per_slot=20):
     """Sauvegarde locale du classeur (inscriptions.xlsx à côté de l'app)."""
     with open(path, "wb") as f:
-        f.write(build_excel_bytes(rows, max_per_group=max_per_group))
+        f.write(
+            build_excel_bytes(rows, max_per_group=max_per_group, max_per_slot=max_per_slot)
+        )

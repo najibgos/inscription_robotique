@@ -4,12 +4,14 @@
 المديرية الإقليمية نواصر — الثانوية التأهيلية علال بن عبد الله
 =================================================================
 Application Streamlit : formulaire d'inscription en arabe (RTL)
-- Champs : nom, prénom, classe (القسم), jour (اليوم), créneau horaire (التوقيت)
-  et groupe/fouj (الفوج)
+- Champs : nom, prénom, classe (القسم), groupe/fouj (الفوج) et الموعد
+  (menu unique jour + créneau d'une heure, avec places restantes en temps réel)
 - Classes disponibles : TCLSH-1 + TCSF-1 → TCSF-9 (codes Massar)
 - Horaires : ateliers à partir du lundi 26 octobre 2026, du lundi au jeudi
-  entre 14h00 et 18h00 (2 créneaux : 14:00-16:00 et 16:00-18:00)
+  entre 14h00 et 18h00 (séances d'une heure : 14:00-15:00, 15:00-16:00,
+  16:00-17:00, 17:00-18:00)
 - 4 groupes (فوج) — 20 élèves maximum par groupe
+- Créneaux (موعد = jour + horaire) — 20 élèves maximum par créneau
 - Insistance sur la limite des places (bandeau d'alerte, statistiques, cartes)
 - Sauvegarde automatique des inscriptions dans inscriptions.json
 - Export Excel : sauvegarde locale inscriptions.xlsx après chaque inscription
@@ -51,6 +53,7 @@ st.set_page_config(
 )
 
 MAX_PER_GROUP = 20  # limite stricte : 20 élèves au maximum par groupe
+MAX_PER_SLOT = 20   # limite stricte : 20 élèves au maximum par موعد (jour + créneau)
 
 # Code d'accès à l'espace d'administration (export Excel) — à personnaliser !
 ADMIN_CODE = "robot2026"
@@ -72,9 +75,14 @@ CLASSES = [
 ]
 
 # Jours et créneaux des ateliers — à partir du lundi 26 octobre 2026,
-# du lundi au jeudi entre 14h00 et 18h00 (2 créneaux de 2 heures)
+# du lundi au jeudi entre 14h00 et 18h00 (séances d'une heure)
 DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
-TIME_SLOTS = ["14:00 – 16:00", "16:00 – 18:00"]
+TIME_SLOTS = [
+    "14:00 – 15:00",
+    "15:00 – 16:00",
+    "16:00 – 17:00",
+    "17:00 – 18:00",
+]
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inscriptions.json")
 
@@ -109,6 +117,17 @@ def group_counts(rows):
     return counts
 
 
+def slot_counts(rows):
+    """Retourne le nombre d'inscrits par موعد (jour + créneau)."""
+    counts = {}
+    for row in rows:
+        j = row.get("jour", "")
+        h = row.get("horaire", "")
+        if j in DAYS and h in TIME_SLOTS:
+            counts[(j, h)] = counts.get((j, h), 0) + 1
+    return counts
+
+
 def normalize(value):
     """Nettoie une chaîne : supprime les espaces multiples et les extrémités."""
     return " ".join((value or "").split()).strip()
@@ -134,6 +153,12 @@ counts = group_counts(data)
 total_capacity = MAX_PER_GROUP * len(GROUPS)
 remaining_total = total_capacity - sum(counts.values())
 full_groups = sum(1 for g in GROUPS if counts[g] >= MAX_PER_GROUP)
+
+# État des créneaux (موعد = jour + créneau) avec limite MAX_PER_SLOT
+slot_counts_map = slot_counts(data)
+all_slots = [(j, h) for j in DAYS for h in TIME_SLOTS]
+available_slots = [s for s in all_slots if slot_counts_map.get(s, 0) < MAX_PER_SLOT]
+full_slots = len(all_slots) - len(available_slots)
 
 # ============================================================
 # 3) MISE EN PAGE : arabe RTL + police arabe + styles
@@ -266,7 +291,7 @@ st.markdown(
     <div class="stat-strip">
         <div class="stat-box">
             <div class="stat-num">{total_capacity}</div>
-            <div class="stat-label">الطاقة الاستيعابية (4 فوجات × 20)</div>
+            <div class="stat-label">الطاقة الاستيعابية (4 أفواج × 20)</div>
         </div>
         <div class="stat-box">
             <div class="stat-num" style="color:{'#c62828' if remaining_total == 0 else '#2e7d32'};">{remaining_total}</div>
@@ -278,7 +303,11 @@ st.markdown(
         </div>
         <div class="stat-box">
             <div class="stat-num" style="color:{'#c62828' if full_groups > 0 else '#0f4c5c'};">{full_groups}</div>
-            <div class="stat-label">فوجات مكتملة</div>
+            <div class="stat-label">أفواج مكتملة</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-num" style="color:{'#c62828' if full_slots > 0 else '#0f4c5c'};">{full_slots}</div>
+            <div class="stat-label">مواعيد مكتملة (من {len(all_slots)})</div>
         </div>
     </div>
     """,
@@ -326,8 +355,13 @@ available_groups = [g for g in GROUPS if counts[g] < MAX_PER_GROUP]
 
 if not available_groups:
     st.error(
-        "🔒 **انتهت جميع المقاعد!** تم اكتمال كل الفوجات (4 فوجات × 20 تلميذا)، "
+        "🔒 **انتهت جميع المقاعد!** تم اكتمال كل الأفواج (4 أفواج × 20 تلميذا)، "
         "وعليه تم **إغلاق باب التسجيل**. نشكر لكم اهتمامكم الكبير."
+    )
+elif not available_slots:
+    st.error(
+        "🔒 **جميع المواعيد مكتملة!** وصل العدد إلى الحد الأقصى في كل الأيام والتوقيتات "
+        "المعروضة. المرجو الاتصال بإدارة الثانوية لمعرفة ما إذا كانت ستُفتح مواعيد جديدة."
     )
 else:
     with st.form("registration_form", clear_on_submit=True):
@@ -359,26 +393,26 @@ else:
             unsafe_allow_html=True,
         )
 
-        col5, col6 = st.columns(2)
-        with col5:
-            jour = st.selectbox(
-                "اليوم *",
-                DAYS,
-                index=None,
-                placeholder="اختر اليوم...",
-            )
-        with col6:
-            horaire = st.selectbox(
-                "التوقيت *",
-                TIME_SLOTS,
-                index=None,
-                placeholder="اختر التوقيت...",
-            )
+        # --- الموعد (jour + créneau d'une heure) : menu unique avec places restantes ---
+        slot_labels = []
+        slot_map = []
+        for j, h in available_slots:
+            rem = MAX_PER_SLOT - slot_counts_map.get((j, h), 0)
+            # \u2066/\u2069 : isolats LTR pour afficher la plage horaire dans le bon ordre (bidi)
+            slot_labels.append(f"يوم {j} — \u2066{h}\u2069 — المقاعد المتبقية: {rem}")
+            slot_map.append((j, h))
+        slot_choice = st.selectbox(
+            "الموعد *",
+            slot_labels,
+            index=None,
+            placeholder="اختر اليوم والتوقيت المناسبين...",
+        )
 
         st.markdown(
             '<p style="font-size:0.85rem; color:#78909c;">'
             "🕐 تبدأ الورشات ابتداء من <b>الاثنين 26 أكتوبر 2026</b> — من الاثنين إلى الخميس، "
-            "بين الساعة <b>14:00</b> و<b>18:00</b>. المرجو اختيار اليوم والتوقيت المناسبين لك."
+            "بين الساعة <b>14:00</b> و<b>18:00</b>، ومدة كل حصة <b>ساعة واحدة</b>. "
+            "المرجو اختيار الموعد المناسب لك — <b>عدد المقاعد محدود في كل موعد</b>."
             "</p>",
             unsafe_allow_html=True,
         )
@@ -403,8 +437,7 @@ else:
         nom_clean = normalize(nom)
         prenom_clean = normalize(prenom)
         classe_clean = normalize(classe or "")
-        jour_clean = normalize(jour or "")
-        horaire_clean = normalize(horaire or "")
+        jour_clean, horaire_clean = "", ""
 
         if len(nom_clean) < 2:
             errors.append("المرجو إدخال الاسم العائلي (حرفان على الأقل).")
@@ -412,17 +445,32 @@ else:
             errors.append("المرجو إدخال الاسم الشخصي (حرفان على الأقل).")
         if classe_clean not in CLASSES:
             errors.append("المرجو اختيار القسم (TCLSH-1 أو TCSF).")
-        if jour_clean not in DAYS:
-            errors.append("المرجو اختيار اليوم (من الاثنين إلى الخميس).")
-        if horaire_clean not in TIME_SLOTS:
-            errors.append("المرجو اختيار التوقيت (14:00–16:00 أو 16:00–18:00).")
+
+        # الموعد : jour + créneau sélectionnés via le menu unique
+        if slot_choice is None or slot_choice not in slot_labels:
+            errors.append("المرجو اختيار الموعد (اليوم والتوقيت المناسبين).")
+        else:
+            jour_clean, horaire_clean = slot_map[slot_labels.index(slot_choice)]
+            if jour_clean not in DAYS or horaire_clean not in TIME_SLOTS:
+                errors.append("المرجو اختيار الموعد (اليوم والتوقيت المناسبين).")
+                jour_clean, horaire_clean = "", ""
 
         # Recharger les données pour réduire les risques de concurrence
         rows_now = load_inscriptions()
         counts_now = group_counts(rows_now)
+        slots_now = slot_counts(rows_now)
 
         if groupe not in GROUPS or counts_now.get(groupe, 0) >= MAX_PER_GROUP:
             errors.append("عذرا، أصبح هذا الفوج مكتملا للتو. المرجو تحديث الصفحة واختيار فوج آخر.")
+
+        # Limite par créneau (revérifiée au moment de la soumission)
+        if (jour_clean, horaire_clean) in all_slots and slots_now.get(
+            (jour_clean, horaire_clean), 0
+        ) >= MAX_PER_SLOT:
+            errors.append(
+                f"عذرا، أصبح هذا الموعد مكتملا للتو (حد أقصى {MAX_PER_SLOT} تلاميذا في كل موعد). "
+                "المرجو تحديث الصفحة واختيار موعد آخر."
+            )
 
         # Détection des doublons (même nom + prénom)
         full_name = f"{nom_clean} {prenom_clean}"
@@ -460,14 +508,16 @@ else:
                 except Exception:
                     pass
 
-            left_after = MAX_PER_GROUP - counts_now[groupe] - 1
+            left_after_group = MAX_PER_GROUP - counts_now[groupe] - 1
+            left_after_slot = MAX_PER_SLOT - slots_now.get((jour_clean, horaire_clean), 0) - 1
 
             st.balloons()
             st.success(
                 f"🎉 تم تسجيل **{prenom_clean} {nom_clean}** — القسم **{classe_clean}** — في **{groupe}**!\n\n"
-                f"🕒 الموعد المختار: يوم **{jour_clean}**، التوقيت **{horaire_clean}** "
+                f"🕒 الموعد المختار: يوم **{jour_clean}**، التوقيت **\u2066{horaire_clean}\u2069** "
                 "(انطلاقا من الاثنين 26 أكتوبر 2026)\n\n"
-                f"عدد المقاعد المتبقية في هذا الفوج: **{left_after}**\n\n"
+                f"عدد المقاعد المتبقية في هذا الفوج: **{left_after_group}** — "
+                f"وفي هذا الموعد: **{left_after_slot}**\n\n"
                 "ملاحظة: يعتبر التسجيل مؤقتا إلى حين تأكيده من طرف إدارة الثانوية."
             )
 
@@ -509,7 +559,7 @@ with st.expander("فتح فضاء الإدارة — قائمة التسجيلا
                     stamp = datetime.now(TZ).strftime("%Y-%m-%d") if TZ else datetime.now().strftime("%Y-%m-%d")
                     st.download_button(
                         "⬇️ تحميل قائمة التسجيلات (ملف Excel)",
-                        data=build_excel_bytes(data, max_per_group=MAX_PER_GROUP),
+                        data=build_excel_bytes(data, max_per_group=MAX_PER_GROUP, max_per_slot=MAX_PER_SLOT),
                         file_name=f"inscriptions_robotique_{stamp}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         width="stretch",
