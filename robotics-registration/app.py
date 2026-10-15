@@ -1,0 +1,370 @@
+# -*- coding: utf-8 -*-
+"""
+استمارة التسجيل في ورشات التكوين في الروبوتيك
+المديرية الإقليمية نواصر — الثانوية التأهيلية علال بن عبد الله
+=================================================================
+Application Streamlit : formulaire d'inscription en arabe (RTL)
+- 4 groupes (فوج) — 20 élèves maximum par groupe
+- Insistance sur la limite des places (bandeau d'alerte, statistiques, cartes)
+- Sauvegarde automatique des inscriptions dans inscriptions.json
+"""
+
+import json
+import os
+from datetime import datetime
+
+import streamlit as st
+
+try:
+    from zoneinfo import ZoneInfo
+    TZ = ZoneInfo("Africa/Casablanca")  # heure locale du Maroc
+except Exception:
+    TZ = None
+
+# ============================================================
+# 1) CONFIGURATION GÉNÉRALE
+# ============================================================
+st.set_page_config(
+    page_title="استمارة التسجيل في ورشات الروبوتيك",
+    page_icon="🤖",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
+
+MAX_PER_GROUP = 20  # limite stricte : 20 élèves au maximum par groupe
+
+GROUPS = ["الفوج الأول", "الفوج الثاني", "الفوج الثالث", "الفوج الرابع"]
+
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inscriptions.json")
+
+
+# ============================================================
+# 2) FONCTIONS DE DONNÉES (fichier JSON local)
+# ============================================================
+def load_inscriptions():
+    """Charge la liste des inscriptions depuis le fichier JSON local."""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                rows = json.load(f)
+            return rows if isinstance(rows, list) else []
+        except (json.JSONDecodeError, OSError):
+            return []
+    return []
+
+
+def save_inscriptions(rows):
+    """Sauvegarde la liste des inscriptions dans le fichier JSON local."""
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False, indent=2)
+
+
+def group_counts(rows):
+    """Retourne le nombre d'inscrits par groupe."""
+    counts = {g: 0 for g in GROUPS}
+    for row in rows:
+        if row.get("groupe") in counts:
+            counts[row["groupe"]] += 1
+    return counts
+
+
+def normalize(value):
+    """Nettoie une chaîne : supprime les espaces multiples et les extrémités."""
+    return " ".join((value or "").split()).strip()
+
+
+def next_id(rows):
+    """Prochain identifiant d'inscription."""
+    return max([r.get("id", 0) for r in rows], default=0) + 1
+
+
+def now_str():
+    """Horodatage à l'heure locale du Maroc."""
+    return (
+        datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+        if TZ
+        else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+
+# État courant (rechargé à chaque interaction)
+data = load_inscriptions()
+counts = group_counts(data)
+total_capacity = MAX_PER_GROUP * len(GROUPS)
+remaining_total = total_capacity - sum(counts.values())
+full_groups = sum(1 for g in GROUPS if counts[g] >= MAX_PER_GROUP)
+
+# ============================================================
+# 3) MISE EN PAGE : arabe RTL + police arabe + styles
+# ============================================================
+st.markdown(
+    """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+
+        html, body, [class*="css"] * {
+            font-family: 'Cairo', 'Noto Naskh Arabic', 'Segoe UI', Tahoma, sans-serif !important;
+        }
+
+        /* Conteneur principal : direction droite-à-gauche */
+        .block-container {
+            direction: rtl;
+            text-align: right;
+            padding-top: 2.2rem;
+            max-width: 880px;
+        }
+
+        /* Champs de saisie en RTL */
+        .stTextInput input {
+            direction: rtl;
+            text-align: right;
+        }
+        .stSelectbox [data-baseweb="select"] > div {
+            direction: rtl;
+            text-align: right;
+        }
+        [data-baseweb="popover"] {
+            direction: rtl;
+            text-align: right;
+        }
+
+        /* Masquer les éléments Streamlit inutiles */
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+        header[data-testid="stHeader"] { display: none; }
+        [data-testid="stSidebar"] { display: none; }
+
+        /* Entête officielle de l'établissement */
+        .official-header {
+            border: 2px solid #16495c;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #f6fbfd 0%, #e8f3f7 100%);
+            padding: 16px 20px;
+            text-align: center;
+            direction: rtl;
+        }
+
+        /* Bandeau statistiques */
+        .stat-strip { display: flex; gap: 10px; direction: rtl; margin: 14px 0 4px 0; }
+        .stat-box {
+            flex: 1;
+            background: #ffffff;
+            border: 1.5px solid #d5e3e8;
+            border-radius: 12px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .stat-num { font-size: 1.45rem; font-weight: 900; color: #0f4c5c; line-height: 1.25; }
+        .stat-label { font-size: 0.82rem; color: #607d8b; }
+
+        /* Cartes des groupes */
+        .group-card {
+            background: #ffffff;
+            border: 1.5px solid #d5e3e8;
+            border-radius: 12px;
+            padding: 12px 14px;
+            direction: rtl;
+        }
+        .bar-bg { background: #eceff1; border-radius: 8px; height: 10px; margin-top: 8px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 8px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ============================================================
+# 4) ENTÊTE OFFICIELLE
+# ============================================================
+st.markdown(
+    """
+    <div class="official-header">
+        <div style="font-size:1.0rem; font-weight:700; color:#16495c;">المديرية الإقليمية نواصر</div>
+        <div style="font-size:1.28rem; font-weight:900; color:#0d3a49; margin-top:4px;">الثانوية التأهيلية علال بن عبد الله</div>
+        <div style="width:130px; height:3px; background:#1f7a8c; border-radius:3px; margin:10px auto 0 auto;"></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Titre de la page
+st.markdown(
+    """
+    <h1 style="text-align:center; color:#0d3a49; font-size:1.7rem; font-weight:900; margin:16px 0 2px 0;">
+        🤖 استمارة التسجيل في ورشات التكوين في الروبوتيك
+    </h1>
+    <p style="text-align:center; color:#52707c; font-size:1.02rem; margin:0 0 12px 0;">
+        مفتوحة لتلاميذ الجذع المشترك
+    </p>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ============================================================
+# 5) INSISTER SUR LA LIMITE DES PLACES
+# ============================================================
+st.warning(
+    "**⚠️ عدد المقاعد محدود:** لا يتجاوز عدد المقبولين في كل فوج **20 تلميذا** فقط. "
+    "تُعتمد التسجيلات حسب **أسبقية الوصول**، ويُغلق الفوج نهائيا بمجرد اكتماله."
+)
+
+# Bandeau de statistiques en temps réel
+st.markdown(
+    f"""
+    <div class="stat-strip">
+        <div class="stat-box">
+            <div class="stat-num">{total_capacity}</div>
+            <div class="stat-label">الطاقة الاستيعابية (4 فوجات × 20)</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-num" style="color:{'#c62828' if remaining_total == 0 else '#2e7d32'};">{remaining_total}</div>
+            <div class="stat-label">المقاعد المتبقية</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-num">{len(data)}</div>
+            <div class="stat-label">عدد التسجيلات</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-num" style="color:{'#c62828' if full_groups > 0 else '#0f4c5c'};">{full_groups}</div>
+            <div class="stat-label">فوجات مكتملة</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Cartes d'état des 4 groupes (grille 2 x 2)
+st.markdown("#### 📊 حالة الأماكن في كل فوج")
+for start in range(0, len(GROUPS), 2):
+    cols = st.columns(2)
+    for j, g in enumerate(GROUPS[start : start + 2]):
+        registered = counts[g]
+        left = MAX_PER_GROUP - registered
+        pct = int(registered / MAX_PER_GROUP * 100)
+        if left == 0:
+            color, status = "#c62828", "مكتمل ✋ — التسجيل مغلق"
+        elif left == 1:
+            color, status = "#ef6c00", "بقي مقعد واحد فقط! سارع بالتسجيل"
+        elif left <= 5:
+            color, status = "#ef6c00", f"المتبقي: {left} فقط — سارع بالتسجيل"
+        else:
+            color, status = "#2e7d32", f"المقاعد المتبقية: {left}"
+        with cols[j]:
+            st.markdown(
+                f"""
+                <div class="group-card">
+                    <div style="font-weight:800; color:#0d3a49; font-size:1.02rem;">{g}</div>
+                    <div style="margin-top:4px; color:#455a64; font-size:0.92rem;">
+                        المسجلون: <b>{registered} / {MAX_PER_GROUP}</b>
+                    </div>
+                    <div class="bar-bg"><div class="bar-fill" style="width:{pct}%; background:{color};"></div></div>
+                    <div style="margin-top:7px; font-size:0.88rem; font-weight:800; color:{color};">{status}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+st.caption("تُحدَّث الأعداد تلقائيا بعد كل عملية تسجيل.")
+
+# ============================================================
+# 6) FORMULAIRE D'INSCRIPTION
+# ============================================================
+st.markdown("#### 📋 معلومات التلميذ(ة)")
+
+available_groups = [g for g in GROUPS if counts[g] < MAX_PER_GROUP]
+
+if not available_groups:
+    st.error(
+        "🔒 **انتهت جميع المقاعد!** تم اكتمال كل الفوجات (4 فوجات × 20 تلميذا)، "
+        "وعليه تم **إغلاق باب التسجيل**. نشكر لكم اهتمامكم الكبير."
+    )
+else:
+    with st.form("registration_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            nom = st.text_input("الاسم العائلي (اللقب) *", placeholder="أدخل الاسم العائلي...")
+        with col2:
+            prenom = st.text_input("الاسم الشخصي *", placeholder="أدخل الاسم الشخصي...")
+
+        options = [
+            f"{g} — المقاعد المتبقية: {MAX_PER_GROUP - counts[g]}" for g in available_groups
+        ]
+        choice = st.selectbox("الفوج المطلوب *", options)
+        groupe = available_groups[options.index(choice)]
+
+        st.markdown(
+            '<p style="font-size:0.85rem; color:#78909c;">'
+            "* جميع الحقول إلزامية. تُحفظ معلوماتك في قائمة التسجيلات حسب أسبقية الوصول."
+            "</p>",
+            unsafe_allow_html=True,
+        )
+
+        submitted = st.form_submit_button(
+            "✅ تأكيد التسجيل", type="primary", use_container_width=True
+        )
+
+    # --------------------------------------------------------
+    # Traitement de la soumission
+    # --------------------------------------------------------
+    if submitted:
+        errors = []
+
+        nom_clean = normalize(nom)
+        prenom_clean = normalize(prenom)
+
+        if len(nom_clean) < 2:
+            errors.append("المرجو إدخال الاسم العائلي (حرفان على الأقل).")
+        if len(prenom_clean) < 2:
+            errors.append("المرجو إدخال الاسم الشخصي (حرفان على الأقل).")
+
+        # Recharger les données pour réduire les risques de concurrence
+        rows_now = load_inscriptions()
+        counts_now = group_counts(rows_now)
+
+        if groupe not in GROUPS or counts_now.get(groupe, 0) >= MAX_PER_GROUP:
+            errors.append("عذرا، أصبح هذا الفوج مكتملا للتو. المرجو تحديث الصفحة واختيار فوج آخر.")
+
+        # Détection des doublons (même nom + prénom)
+        full_name = f"{nom_clean} {prenom_clean}"
+        for row in rows_now:
+            existing = f"{normalize(row.get('nom', ''))} {normalize(row.get('prenom', ''))}"
+            if existing == full_name:
+                errors.append(
+                    "هذا الاسم مسجل مسبقا في القائمة. في حال وجود خطأ، المرجو الاتصال بإدارة الثانوية."
+                )
+                break
+
+        if errors:
+            for e in errors:
+                st.error(e)
+        else:
+            rows_now.append(
+                {
+                    "id": next_id(rows_now),
+                    "nom": nom_clean,
+                    "prenom": prenom_clean,
+                    "groupe": groupe,
+                    "date_inscription": now_str(),
+                }
+            )
+            save_inscriptions(rows_now)
+
+            left_after = MAX_PER_GROUP - counts_now[groupe] - 1
+
+            st.balloons()
+            st.success(
+                f"🎉 تم تسجيل **{prenom_clean} {nom_clean}** بنجاح في **{groupe}**!\n\n"
+                f"عدد المقاعد المتبقية في هذا الفوج: **{left_after}**\n\n"
+                "ملاحظة: يعتبر التسجيل مؤقتا إلى حين تأكيده من طرف إدارة الثانوية."
+            )
+
+# ============================================================
+# 7) PIED DE PAGE
+# ============================================================
+st.markdown(
+    """
+    <div style="text-align:center; margin-top:22px; padding-top:12px; border-top:1px solid #e0e7ea;
+                color:#90a4ae; font-size:0.85rem; direction:rtl;">
+        للاستفسار، المرجو التواصل مع إدارة الثانوية — الثانوية التأهيلية علال بن عبد الله
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
