@@ -406,7 +406,7 @@ else:
         groupe = available_groups[options.index(choice)]
 
         st.markdown(
-            '<p style="font-size:0.82rem; color:#78909c; direction:ltr; text-align:left;">'
+            '<p style="font-size:0.82rem; color:#78909c; direction:rtl; text-align:right;">'
             "TCLSH : جذع مشترك الآداب والعلوم الإنسانية &nbsp;|&nbsp; TCSF : جذع مشترك علمي"
             "</p>",
             unsafe_allow_html=True,
