@@ -5,7 +5,8 @@ Export Excel des inscriptions aux ateliers de robotique
 =================================================================
 Génère un classeur .xlsx en arabe (feuilles RTL) contenant :
   - Feuille 1 « التسجيلات »  : liste complète des inscrits (id, nom, prénom,
-    classe, فوج, jour1, jour2, créneau, date) avec ligne de total et en-têtes figés.
+    classe, فوج, jour1 + horaire1, jour2 + horaire2, date) avec ligne de total
+    et en-têtes figés.
   - Feuille 2 « إحصائيات » : répartition par فوج (places restantes, taux de
     remplissage), par قسم (classe), par حصة (jour + créneau, avec capacité,
     places restantes et taux de remplissage) et par paire de jours (اليومان).
@@ -35,8 +36,12 @@ NEUTRAL_0 = "FFFFFF"    # lignes paires
 # Tahoma : excellent rendu de l'arabe sous Windows (Excel), macOS et LibreOffice
 FONT_NAME = "Tahoma"
 
-HEADERS = ["رقم", "الاسم العائلي", "الاسم الشخصي", "القسم", "الفوج", "اليوم الأول", "اليوم الثاني", "التوقيت", "تاريخ التسجيل"]
-COL_WIDTHS = [8, 18, 18, 12, 16, 12, 12, 14, 21]
+HEADERS = [
+    "رقم", "الاسم العائلي", "الاسم الشخصي", "القسم", "الفوج",
+    "اليوم الأول", "توقيت الحصة الأولى", "اليوم الثاني", "توقيت الحصة الثانية",
+    "تاريخ التسجيل",
+]
+COL_WIDTHS = [8, 18, 18, 12, 16, 12, 15, 12, 15, 21]
 
 GROUPS = ["الفوج الأول", "الفوج الثاني", "الفوج الثالث", "الفوج الرابع"]
 CLASSES = [
@@ -128,7 +133,8 @@ def build_excel_bytes(rows, max_per_group=20, max_per_slot=20):
 
     Args:
         rows: liste de dictionnaires {id, nom, prenom, classe, groupe, jour1,
-              jour2, horaire, date_inscription} (compat : ancien champ jour)
+              horaire1, jour2, horaire2, date_inscription} (compat : ancien
+              champ horaire unique ou jour seul)
         max_per_group: capacité maximale par فوج (pour les statistiques)
         max_per_slot: capacité maximale par حصة (jour + créneau)
 
@@ -167,14 +173,15 @@ def build_excel_bytes(rows, max_per_group=20, max_per_slot=20):
             row.get("classe", ""),
             row.get("groupe", ""),
             row.get("jour1", row.get("jour", "")),
+            row.get("horaire1") or row.get("horaire", ""),
             row.get("jour2", ""),
-            row.get("horaire", ""),
+            (row.get("horaire2") or row.get("horaire", "")) if row.get("jour2") else "",
             row.get("date_inscription", ""),
         ]
         for c_idx, v in enumerate(values):
             cell = ws.cell(row=row_num, column=2 + c_idx, value=v)
-            # centrer : id, classe, jours, créneau, date — droite : textes arabes
-            horizontal = "center" if c_idx in (0, 3, 5, 6, 7, 8) else "right"
+            # centrer : id, classe, jours, créneaux, date — droite : textes arabes
+            horizontal = "center" if c_idx in (0, 3, 5, 6, 7, 8, 9) else "right"
             _style_data_cell(cell, r_idx, horizontal=horizontal)
         ws.row_dimensions[row_num].height = 22
 
@@ -256,14 +263,16 @@ def build_excel_bytes(rows, max_per_group=20, max_per_slot=20):
     _style_total_row(ws2, r, 2, 3)
 
     # ---- Section C : répartition par حصة (jour + créneau) ----
-    # Chaque inscription compte pour ses 2 séances (jour1 + jour2, même horaire)
+    # Chaque inscription compte pour ses 2 séances (2 jours différents,
+    # chacune avec son propre créneau)
     counts_slot = {}
     for row in rows:
-        h = row.get("horaire", "")
-        jours = [j for j in (row.get("jour1"), row.get("jour2")) if j]
-        if not jours and row.get("jour"):
-            jours = [row.get("jour")]  # compat ancien format
-        for j in jours:
+        h1 = row.get("horaire1") or row.get("horaire", "")
+        h2 = row.get("horaire2") or row.get("horaire", "")
+        seances = [(row.get("jour1"), h1), (row.get("jour2"), h2)]
+        if not any(j for j, _ in seances) and row.get("jour"):
+            seances = [(row.get("jour"), row.get("horaire", ""))]  # compat ancien format
+        for j, h in seances:
             if j in DAYS and h in TIME_SLOTS:
                 counts_slot[(j, h)] = counts_slot.get((j, h), 0) + 1
 
@@ -352,7 +361,7 @@ def build_excel_bytes(rows, max_per_group=20, max_per_slot=20):
     note2 = ws2.cell(
         row=r + 3,
         column=2,
-        value="موعد الورشات: انطلاقا من الاثنين 26 أكتوبر 2026 — حصتان في الأسبوع يومين مختلفين في نفس التوقيت — من الاثنين إلى الخميس، بين 14:00 و18:00 — مدة كل حصة ساعة واحدة",
+        value="موعد الورشات: انطلاقا من الاثنين 26 أكتوبر 2026 — حصتان في الأسبوع في يومين مختلفين (يمكن أن يختلف توقيت كل حصة) — من الاثنين إلى الخميس، بين 14:00 و18:00 — مدة كل حصة ساعة واحدة",
     )
     note2.font = _font(9, color=NEUTRAL_600)
     note2.alignment = Alignment(horizontal="right", vertical="center")

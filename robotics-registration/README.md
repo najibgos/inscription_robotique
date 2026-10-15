@@ -11,18 +11,20 @@ destinée aux élèves du **tronc commun**.
 - Interface entièrement en **arabe (RTL)** avec police arabe (Cairo) et champs alignés à droite
 - Entête officielle de l'établissement
 - Champs du formulaire : **الاسم العائلي** (nom), **الاسم الشخصي** (prénom), **القسم** (classe),
-  **الفوج** (choix parmi 4 groupes) et **الموعد الأسبوعي** (menu unique combinant la paire de
-  2 jours et le créneau horaire, avec le nombre de places restantes affiché sur chaque option)
+  **الفوج** (choix parmi 4 groupes) et **les 2 séances hebdomadaires** — **الحصة الأولى** et
+  **الحصة الثانية** (2 menus distincts jour + créneau, avec le nombre de places restantes
+  affiché sur chaque option)
 - **Champ classe (القسم)** avec les codes officiels : `TCLSH-1`, `TCSF-1` → `TCSF-10`
   (menu déroulant obligatoire, choix vide refusé à la validation)
-- **Choix du الموعد الأسبوعي (2 séances par semaine)** : ateliers à partir du **lundi 26 octobre 2026**,
+- **Choix des 2 séances (2 par semaine)** : ateliers à partir du **lundi 26 octobre 2026**,
   du lundi au jeudi entre 14h00 et 18h00, **séances d'une heure**. Chaque élève suit **2 séances
-  par semaine : 2 jours différents + le même horaire, dans le même فوج** (exemple : الاثنين +
-  الأربعاء de 14:00 à 15:00). Le menu unique propose les **24 combinaisons** (6 paires de jours
-  × 4 horaires) ; chaque option affiche les places restantes **calculées sur les 2 séances
-  ensemble** (le minimum des deux) et les combinaisons dont une séance est complète sont retirées
-  automatiquement du menu. Pour ajuster les créneaux ou les paires, modifiez les constantes
-  `TIME_SLOTS` / `DAY_PAIRS` en début de `app.py` (et les copies identiques dans `excel_export.py`).
+  par semaine : 2 jours différents, dans le même فوج** — et chaque séance peut avoir
+  **son propre horaire** (exemple : الاثنين 14:00–15:00 + الأربعاء 16:00–17:00).
+  Chaque menu propose les **16 créneaux** (4 jours × 4 horaires) encore disponibles ; le jour
+  de la 2e séance doit être **différent** de celui de la 1re (contrôlé à la validation :
+  « يجب أن تكون الحصة الثانية في يوم مختلف »). Les créneaux complets (20/20) sont retirés
+  automatiquement des 2 menus. Pour ajuster les créneaux, modifiez les constantes
+  `DAYS` / `TIME_SLOTS` en début de `app.py` (et les copies identiques dans `excel_export.py`).
 - **Limites strictes contrôlées à la validation** : **20 élèves maximum par فوج**
   (constante `MAX_PER_GROUP`) et **20 élèves maximum par حصة** — jour + horaire
   (constante `MAX_PER_SLOT`) ; chaque inscription occupe 1 place dans **chacune** de ses 2 séances.
@@ -41,7 +43,11 @@ destinée aux élèves du **tronc commun**.
 - **Export Excel** :
   - sauvegarde locale automatique de `inscriptions.xlsx` après chaque inscription (quand l'app tourne sur un ordinateur) ;
   - **espace d'administration** (section « 🔒 فضاء الإدارة » en bas de page, protégé par code) : tableau des inscriptions + bouton de téléchargement `inscriptions_robotique_YYYY-MM-DD.xlsx` ;
-  - le classeur contient 2 feuilles en droite-à-gauche : **التسجيلات** (liste complète stylée avec اليوم الأول/اليوم الثاني, en-têtes figés, prête à imprimer) et **إحصائيات** (répartition par فوج avec places restantes et taux de remplissage + répartition par قسم + **التوزيع حسب الحصة** : jour × créneau avec capacité, places restantes et taux de remplissage + **التوزيع حسب أيام الحصتين** : les 6 paires de jours).
+  - le classeur contient 2 feuilles en droite-à-gauche : **التسجيلات** (liste complète stylée avec
+    les 2 séances : يوم + توقيت de chacune, en-têtes figés, prête à imprimer) et **إحصائيات**
+    (répartition par فوج avec places restantes et taux de remplissage + répartition par قسم +
+    **التوزيع حسب الحصة** : jour × créneau avec capacité, places restantes et taux de remplissage +
+    **التوزيع حسب أيام الحصتين** : les 6 paires de jours, ordre inversé compté ensemble).
 
 ## 🚀 Installation & lancement
 
@@ -84,4 +90,8 @@ Trois méthodes :
 
 1. **Espace d'administration** dans l'app (code `robot2026`) → téléchargement direct du fichier Excel ;
 2. **`inscriptions.xlsx`** : mis à jour automatiquement après chaque inscription quand l'app tourne localement ;
-3. **`inscriptions.json`** : contient pour chaque élève `id`, `nom`, `prenom`, `classe`, `groupe`, `jour1`, `jour2`, `horaire`, `date_inscription` — ouvrable dans un éditeur de texte ou importable dans Excel.
+3. **`inscriptions.json`** : contient pour chaque élève `id`, `nom`, `prenom`, `classe`, `groupe`,
+   `jour1`, `horaire1`, `jour2`, `horaire2`, `date_inscription` — ouvrable dans un éditeur de
+   texte ou importable dans Excel. Les anciens enregistrements (`jour` seul, ou `jour1`/`jour2`
+   avec un `horaire` unique partagé) restent lus et comptés correctement dans l'application
+   et les statistiques.
