@@ -147,6 +147,18 @@ st.markdown(
             max-width: 880px;
         }
 
+        /* Titres de sections Markdown (h1-h6) alignés à droite
+           — le h1 du titre principal garde son centrage (style inline) */
+        [data-testid="stMarkdownContainer"] h1,
+        [data-testid="stMarkdownContainer"] h2,
+        [data-testid="stMarkdownContainer"] h3,
+        [data-testid="stMarkdownContainer"] h4,
+        [data-testid="stMarkdownContainer"] h5,
+        [data-testid="stMarkdownContainer"] h6 {
+            direction: rtl;
+            text-align: right;
+        }
+
         /* Champs de saisie en RTL */
         .stTextInput input {
             direction: rtl;
